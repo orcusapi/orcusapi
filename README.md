@@ -2,19 +2,25 @@
 
 Turns any Soroban smart contract into a plain HTTP/JSON API.
 
-Give it a contract's **WASM hash**, and it reads the contract's interface
-(functions, structs, enums, unions) straight out of the WASM's
-`contractspecv0` custom section, then lets you call those functions over
-HTTP instead of building Soroban transactions and XDR by hand.
+Point it at a contract's **WASM hash** (via config), and it reads the
+contract's interface (functions, structs, enums, unions) straight out of
+the WASM's `contractspecv0` custom section, then lets you call those
+functions over HTTP instead of building Soroban transactions and XDR by
+hand.
 
 ## How it fits together
+
+Each running instance of the proxy serves one contract interface, fixed at
+startup by the `CONTRACT_WASM_HASH` env var — run one instance per contract
+you want to expose.
 
 A WASM hash only identifies *code* (the interface). Calling a function
 requires a specific *deployed instance* of that code (a `C...` contract
 ID), since many contracts can share the same WASM. So:
 
-- The WASM hash in the URL selects which interface/spec to use.
-- The `contract_id` in the request body selects which deployed instance to
+- `CONTRACT_WASM_HASH` (env) selects which interface/spec this instance
+  serves.
+- The `contract_id` in each request body selects which deployed instance to
   actually invoke.
 
 Two ways to submit a call, chosen per-request:
@@ -30,7 +36,7 @@ Two ways to submit a call, chosen per-request:
 
 ```bash
 cp .env.example .env
-# edit .env: set SOROBAN_RPC_URL / SOROBAN_NETWORK_PASSPHRASE for your network
+# edit .env: set SOROBAN_RPC_URL / SOROBAN_NETWORK_PASSPHRASE / CONTRACT_WASM_HASH
 cargo run
 ```
 
@@ -40,8 +46,13 @@ Config is via environment variables (see `.env.example`):
 |---|---|---|
 | `SOROBAN_RPC_URL` | yes | Soroban RPC endpoint, e.g. `https://soroban-testnet.stellar.org` |
 | `SOROBAN_NETWORK_PASSPHRASE` | yes | Must match the network the RPC endpoint serves |
+| `CONTRACT_WASM_HASH` | yes | Hex-encoded hash of the contract WASM this instance exposes as an API |
 | `BIND_ADDR` | no (default `0.0.0.0:8080`) | HTTP listen address |
 | `REQUEST_TIMEOUT_SECS` | no (default `30`) | Timeout for upstream RPC calls |
+
+Startup fails fast with a clear error if `CONTRACT_WASM_HASH` isn't valid
+hex for a 32-byte hash. To serve a different contract, change the env var
+and restart (or run a second instance on a different port/env file).
 
 ## Endpoints
 
@@ -51,14 +62,14 @@ Liveness check.
 ### `GET /network`
 Proxies the RPC's `getNetwork` — passphrase, protocol version, friendbot URL.
 
-### `GET /contracts/{wasm_hash}/spec`
+### `GET /spec`
 Full parsed contract interface: functions, structs, unions, enums, error
 enums, each with their field/parameter types.
 
-### `GET /contracts/{wasm_hash}/functions`
+### `GET /functions`
 Just the function list from the spec above.
 
-### `POST /contracts/{wasm_hash}/invoke/{function_name}`
+### `POST /invoke/{function_name}`
 
 Request body:
 
@@ -130,4 +141,5 @@ integers are rendered as decimal strings.
 - The signed flow polls `getTransaction` for up to ~30 seconds; slower
   confirmations return a timeout even though the transaction may still land.
 - CORS is wide open by default (`CorsLayer::permissive()`); tighten this in
+  `src/main.rs` before exposing the proxy publicly.
   `src/main.rs` before exposing the proxy publicly.
