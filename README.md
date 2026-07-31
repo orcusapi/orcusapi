@@ -1,3 +1,7 @@
+> [!WARNING]
+> DO NOT USE THIS SOFTWARE YET! It's still under development and have not been thoroughly tested.
+
+
 # OrcusAPI
 
 Turns any Soroban smart contract into a plain HTTP/JSON API.
